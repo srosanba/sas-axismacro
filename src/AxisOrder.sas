@@ -37,6 +37,7 @@
                   _&Prefix.AxisEnd     Axis end value.
                   _&Prefix.AxisBy      Axis increment/by value.
                   _&Prefix.AxisList    Space-separated list of major tick mark values.
+                  _&Prefix.AxisLogList Space-separated list of log-scale tick mark values.
                   _&Prefix.AxisMin     Minimum observed value in VAR or VAL.
                   _&Prefix.AxisMax     Maximum observed value in VAR or VAL.
                   _&Prefix.AxisListUnb Alternate version of AxisList that allows for unbounded data
@@ -71,6 +72,7 @@
    2016-05-06  Shane Rosanbalm   Fails when &val contains negative numbers.
                                  Added %nrbquote to %if and %str( ) as modifier to countw.
    2016-07-25  Shane Rosanbalm   Fix two-level dataset name bug.
+   2026-01-06  Shane Rosanbalm   Add _AxisLogList.
 
 *-----------------------------------------------------------------------------------*/
 
@@ -94,9 +96,9 @@
 
 
    %*---------- output macro variables to be created ----------;
-   %GLOBAL _&Prefix.AxisStart _&Prefix.AxisEnd _&Prefix.AxisBy _&Prefix.AxisList _&Prefix.AxisMinor
-           _&Prefix.AxisMin _&Prefix.AxisMax _&Prefix.AxisListUnb;
-      
+   %GLOBAL _&Prefix.AxisStart _&Prefix.AxisEnd _&Prefix.AxisBy _&Prefix.AxisList 
+            _&Prefix.AxisLogList _&Prefix.AxisMinor _&Prefix.AxisMin _&Prefix.AxisMax 
+            _&Prefix.AxisListUnb;
       
    %*---------- capture option settings at macro invocation ----------;
    %let _mprint = %sysfunc(getoption(mprint));
@@ -275,12 +277,27 @@
          %end;
       end;
    run;
+   
+   
+   %*---------- add logvert variable ----------;
+   data _vert&libmem;
+      set _vert&libmem;
+      if vert > 0 then
+         logvert = log10(vert);
+   run;      
       
       
    %*---------- calculate min, max, range based on variables and values of interest ----------;
    proc means data=_vert&libmem noprint;
       var vert;
       output out=_minmaxrange min=varmin max=varmax range=varrange;
+   run;
+   
+   
+   %*---------- also calculate logmin, logmax ----------;
+   proc means data=_vert&libmem noprint;
+      var logvert;
+      output out=_logminmax min=logvarmin max=logvarmax;
    run;
    
    
@@ -452,9 +469,30 @@
    run;
    
    
+   %*---------- create log list ----------;
+   data _logaxisorder;
+      set _logminmax;
+      
+      start = floor(logvarmin);
+      end = ceil(logvarmax);
+      length AxisLogList $200;
+      do exp = start to end by 1;
+         ith = put(10**exp,best.);
+         if exp = start then
+            AxisLogList = ith;
+         else
+            AxisLogList = catx(" ",AxisLogList,ith);
+         output;
+      end;
+      
+      %*---------- send results to macro variables ----------;
+      call symputx("_&Prefix.AxisLogList",AxisLogList);
+   run;
+   
+   
    %*---------- remove temporary datasets ----------;
    proc sql noprint;
-      drop table _vert&libmem, _minmaxrange, _axisorder;
+      drop table _vert&libmem, _minmaxrange, _axisorder, _logminmax, _logaxisorder;
    quit;
 
    
@@ -471,6 +509,7 @@
    %put _&Prefix.AxisEnd     = [ &&_&Prefix.AxisEnd ];
    %put _&Prefix.AxisBy      = [ &&_&Prefix.AxisBy ];
    %put _&Prefix.AxisList    = [ &&_&Prefix.AxisList ];
+   %put _&Prefix.AxisLogList = [ &&_&Prefix.AxisLogList ];
    %put _&Prefix.AxisMin     = [ &&_&Prefix.AxisMin ];
    %put _&Prefix.AxisMax     = [ &&_&Prefix.AxisMax ];
    %put _&Prefix.AxisListUnb = [ &&_&Prefix.AxisListUnb ];
